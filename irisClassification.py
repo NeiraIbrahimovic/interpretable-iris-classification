@@ -19,8 +19,8 @@ class IrisClassifier(object):
         Returns:
             None
         '''
-        # exception handling: make sure entered data is a Pandas dataframe
-        # if it is, then save data into a new dataframe self.data
+        # Retain the caller's dataframe reference. The demo normalizes species
+        # labels before construction; this class does not silently rename them.
         if isinstance(data, pd.DataFrame):
             self.irises = data
         # otherwise, raise a TypeError
@@ -39,6 +39,8 @@ class IrisClassifier(object):
         '''
         if (type(PetalWidthCm) not in [float, int] or type(PetalLengthCm) not in [float, int]):
             raise TypeError("This function is designed to work only with floats or ints")
+        # Original fixed thresholds derived from exploratory plots. Width is
+        # checked first; length resolves the remaining overlapping species.
         if PetalWidthCm < 0.8:
             return "setosa"
         else:
@@ -56,7 +58,7 @@ class IrisClassifier(object):
         by the values in val_cols.
         Args:
             group_cols: a string or list of strings containing the name(s) of column(s) in irises
-            value_cols: a string or list of strings containing the name(s) of column(s) in irises
+            val_cols: a string or list of strings containing the name(s) of column(s) in irises
         Returns: 
             A table summarizing these groupings
         '''
@@ -65,19 +67,23 @@ class IrisClassifier(object):
         
         
         # check that parameters entered into group_cols and val_cols are present in iris_cols
-        params_correct = False
-        if group_cols in iris_cols or all(item in iris_cols for item in group_cols):
-            params_correct = True
-        if val_cols in iris_cols or all(item in iris_cols for item in val_cols):
-            params_correct = True
-        else:
-            params_correct = False
+        # Validate both arguments independently: a valid value column must not
+        # overwrite a failed group-column check. Empty selections are invalid.
+        def valid_columns(columns):
+            names = [columns] if isinstance(columns, str) else columns
+            return (isinstance(names, (list, tuple)) and bool(names)
+                    and all(isinstance(name, str) and name in iris_cols
+                            and name in self.irises.columns for name in names))
+
+        params_correct = valid_columns(group_cols) and valid_columns(val_cols)
             
         # if the parameters entered into the function include columns of the dataframe
         # then, return the table made by grouping the group_cols by value_cols
         # which calculates the mean and standard deviation for each group/value combination.
         if params_correct == True:
-            return self.irises.groupby(group_cols)[val_cols].aggregate([np.mean, np.std])
+            # Named operations preserve pandas' sample-standard-deviation
+            # semantics across versions instead of dispatching NumPy callables.
+            return self.irises.groupby(group_cols)[val_cols].aggregate(["mean", "std"])
         #elif all(item in iris_cols for item in val_cols):
            # return self.irises.groupby(group_cols)[val_cols].aggregate([np.mean, np.std])
         # otherwise, raise a NameError
@@ -143,7 +149,9 @@ class IrisClassifier(object):
         # plot column x of that dataframe against column y
         # pass in the species name as the label for that plot, and set the color of the 
         # points corresponding to the species name
-        for species, df_species in self.irises.groupby(["Species"]):
+        # Scalar grouping keeps species keys as strings in modern pandas.
+        # A one-element list can yield tuples, which do not match the color map.
+        for species, df_species in self.irises.groupby("Species"):
             ax.scatter(df_species[x], df_species[y], label=species, facecolor=colors[species])
 
         # show the legend indicating which color corresponds to which species on the plot
